@@ -21,7 +21,24 @@ def main():
 
     print("Train shape:", train.shape)
     print("Test shape:", test.shape)
+    train = feature_engineering(train)
+    test = feature_engineering(test)
 
 
 if __name__ == "__main__":
     main()
+
+
+# Feature Engineering
+def feature_engineering(df):
+    df = df.copy()
+
+    # NDVI
+    if "NIR" in df.columns and "Red" in df.columns:
+        df["NDVI"] = (df["NIR"] - df["Red"]) / (df["NIR"] + df["Red"] + 1e-5)
+
+    # Ratio
+    if "Blue" in df.columns and "Green" in df.columns:
+        df["B_G_ratio"] = df["Blue"] / (df["Green"] + 1e-5)
+
+    return df
