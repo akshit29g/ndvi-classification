@@ -1,16 +1,17 @@
-# Imports
 import pandas as pd
+import numpy as np
+import optuna
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import LabelEncoder
 from lightgbm import LGBMClassifier
-import optuna
-from sklearn.metrics import accuracy_score
 from lightgbm.callback import early_stopping
 
+
+# =========================
 # Load Data
-
-
+# =========================
 def load_data():
     train = pd.read_csv("train.csv")
     test = pd.read_csv("test.csv")
@@ -23,60 +24,47 @@ def load_data():
     return train, test, test_ids
 
 
-def main():
-    train, test, test_ids = load_data()
-
-    print("Train shape:", train.shape)
-    print("Test shape:", test.shape)
-    train = feature_engineering(train)
-    test = feature_engineering(test)
-    X = train.drop(columns=["class"])
-    y = train["class"]
-    X_test = test.drop(columns=["ID"], errors="ignore")
-    le = LabelEncoder()
-    y_encoded = le.fit_transform(y)
-    model = train_model(X, y_encoded)
-    best_params = tune_model(X_train, y_train, X_val, y_val)
-
-    X_train, X_val, y_train, y_val = train_test_split(
-        X, y_encoded, test_size=0.15, stratify=y_encoded, random_state=42
-    )
-
-
-X, X_test = preprocess(X, X_test)
-
-if __name__ == "__main__":
-    main()
-
-
+# =========================
 # Feature Engineering
+# =========================
 def feature_engineering(df):
     df = df.copy()
 
-    # NDVI
+    # NDVI (if NIR & Red exist)
     if "NIR" in df.columns and "Red" in df.columns:
         df["NDVI"] = (df["NIR"] - df["Red"]) / (df["NIR"] + df["Red"] + 1e-5)
 
-    # Ratio
+    # Ratio feature
     if "Blue" in df.columns and "Green" in df.columns:
         df["B_G_ratio"] = df["Blue"] / (df["Green"] + 1e-5)
+
+    # Time-series aggregations (IMPORTANT UPGRADE)
+    ndvi_cols = [col for col in df.columns if "_N" in col]
+
+    if len(ndvi_cols) > 0:
+        df["ndvi_mean"] = df[ndvi_cols].mean(axis=1)
+        df["ndvi_std"] = df[ndvi_cols].std(axis=1)
+        df["ndvi_max"] = df[ndvi_cols].max(axis=1)
+        df["ndvi_min"] = df[ndvi_cols].min(axis=1)
 
     return df
 
 
+# =========================
+# Preprocessing
+# =========================
 def preprocess(X_train, X_test):
     imputer = SimpleImputer(strategy="median")
+
     X_train = imputer.fit_transform(X_train)
     X_test = imputer.transform(X_test)
+
     return X_train, X_test
 
 
-def train_model(X, y):
-    model = LGBMClassifier(n_estimators=100)
-    model.fit(X, y)
-    return model
-
-
+# =========================
+# Optuna Optimization
+# =========================
 def tune_model(X_train, y_train, X_val, y_val):
     def objective(trial):
         params = {
@@ -106,18 +94,73 @@ def tune_model(X_train, y_train, X_val, y_val):
     study = optuna.create_study(direction="maximize")
     study.optimize(objective, n_trials=30)
 
+    print("Best Accuracy:", study.best_value)
+    print("Best Params:", study.best_params)
+
     return study.best_params
 
 
-final_model = LGBMClassifier(n_estimators=1500, **best_params)
-final_model.fit(X, y_encoded)
+# =========================
+# Train Final Model
+# =========================
+def train_model(X, y, best_params):
+    model = LGBMClassifier(
+        n_estimators=1500,
+        random_state=42,
+        **best_params
+    )
 
-y_pred = final_model.predict(X_test)
-y_labels = le.inverse_transform(y_pred)
+    model.fit(X, y)
+    return model
 
-submission = pd.DataFrame({
-    "ID": test_ids,
-    "class": y_labels
-})
 
-submission.to_csv("submission.csv", index=False)
+# =========================
+# Main Pipeline
+# =========================
+def main():
+    train, test, test_ids = load_data()
+
+    # Feature Engineering
+    train = feature_engineering(train)
+    test = feature_engineering(test)
+
+    # Split features and target
+    X = train.drop(columns=["class"])
+    y = train["class"]
+
+    # Encode labels
+    le = LabelEncoder()
+    y_encoded = le.fit_transform(y)
+
+    X_test = test.drop(columns=["ID"], errors="ignore")
+
+    # Preprocessing
+    X, X_test = preprocess(X, X_test)
+
+    # Validation split
+    X_train, X_val, y_train, y_val = train_test_split(
+        X, y_encoded, test_size=0.15, stratify=y_encoded, random_state=42
+    )
+
+    # Hyperparameter tuning
+    best_params = tune_model(X_train, y_train, X_val, y_val)
+
+    # Train final model
+    final_model = train_model(X, y_encoded, best_params)
+
+    # Predictions
+    y_pred = final_model.predict(X_test)
+    y_labels = le.inverse_transform(y_pred)
+
+    # Save submission
+    submission = pd.DataFrame({
+        "ID": test_ids,
+        "class": y_labels
+    })
+
+    submission.to_csv("submission.csv", index=False)
+    print("Submission file saved!")
+
+
+if __name__ == "__main__":
+    main()
