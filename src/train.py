@@ -1,6 +1,9 @@
 # Imports
 import pandas as pd
 from sklearn.impute import SimpleImputer
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+
 # Load Data
 
 
@@ -26,6 +29,12 @@ def main():
     X = train.drop(columns=["class"])
     y = train["class"]
     X_test = test.drop(columns=["ID"], errors="ignore")
+    le = LabelEncoder()
+    y_encoded = le.fit_transform(y)
+
+    X_train, X_val, y_train, y_val = train_test_split(
+        X, y_encoded, test_size=0.15, stratify=y_encoded, random_state=42
+    )
 
 
 X, X_test = preprocess(X, X_test)
