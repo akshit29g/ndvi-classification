@@ -107,3 +107,17 @@ def tune_model(X_train, y_train, X_val, y_val):
     study.optimize(objective, n_trials=30)
 
     return study.best_params
+
+
+final_model = LGBMClassifier(n_estimators=1500, **best_params)
+final_model.fit(X, y_encoded)
+
+y_pred = final_model.predict(X_test)
+y_labels = le.inverse_transform(y_pred)
+
+submission = pd.DataFrame({
+    "ID": test_ids,
+    "class": y_labels
+})
+
+submission.to_csv("submission.csv", index=False)
