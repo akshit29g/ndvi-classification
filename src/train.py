@@ -4,6 +4,9 @@ from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from lightgbm import LGBMClassifier
+import optuna
+from sklearn.metrics import accuracy_score
+from lightgbm.callback import early_stopping
 
 # Load Data
 
@@ -33,6 +36,7 @@ def main():
     le = LabelEncoder()
     y_encoded = le.fit_transform(y)
     model = train_model(X, y_encoded)
+    best_params = tune_model(X_train, y_train, X_val, y_val)
 
     X_train, X_val, y_train, y_val = train_test_split(
         X, y_encoded, test_size=0.15, stratify=y_encoded, random_state=42
@@ -71,3 +75,35 @@ def train_model(X, y):
     model = LGBMClassifier(n_estimators=100)
     model.fit(X, y)
     return model
+
+
+def tune_model(X_train, y_train, X_val, y_val):
+    def objective(trial):
+        params = {
+            "n_estimators": 1500,
+            "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.1),
+            "num_leaves": trial.suggest_int("num_leaves", 20, 100),
+            "max_depth": trial.suggest_int("max_depth", 3, 12),
+            "subsample": trial.suggest_float("subsample", 0.6, 1.0),
+            "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
+            "reg_alpha": trial.suggest_float("reg_alpha", 0, 5),
+            "reg_lambda": trial.suggest_float("reg_lambda", 0, 5),
+            "random_state": 42,
+        }
+
+        model = LGBMClassifier(**params)
+
+        model.fit(
+            X_train,
+            y_train,
+            eval_set=[(X_val, y_val)],
+            callbacks=[early_stopping(50)],
+        )
+
+        preds = model.predict(X_val)
+        return accuracy_score(y_val, preds)
+
+    study = optuna.create_study(direction="maximize")
+    study.optimize(objective, n_trials=30)
+
+    return study.best_params
