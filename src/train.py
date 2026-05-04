@@ -3,6 +3,7 @@ import pandas as pd
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
+from lightgbm import LGBMClassifier
 
 # Load Data
 
@@ -31,6 +32,7 @@ def main():
     X_test = test.drop(columns=["ID"], errors="ignore")
     le = LabelEncoder()
     y_encoded = le.fit_transform(y)
+    model = train_model(X, y_encoded)
 
     X_train, X_val, y_train, y_val = train_test_split(
         X, y_encoded, test_size=0.15, stratify=y_encoded, random_state=42
@@ -63,3 +65,9 @@ def preprocess(X_train, X_test):
     X_train = imputer.fit_transform(X_train)
     X_test = imputer.transform(X_test)
     return X_train, X_test
+
+
+def train_model(X, y):
+    model = LGBMClassifier(n_estimators=100)
+    model.fit(X, y)
+    return model
