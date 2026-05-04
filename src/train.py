@@ -1,6 +1,6 @@
 # Imports
 import pandas as pd
-
+from sklearn.impute import SimpleImputer
 # Load Data
 
 
@@ -23,7 +23,12 @@ def main():
     print("Test shape:", test.shape)
     train = feature_engineering(train)
     test = feature_engineering(test)
+    X = train.drop(columns=["class"])
+    y = train["class"]
+    X_test = test.drop(columns=["ID"], errors="ignore")
 
+
+X, X_test = preprocess(X, X_test)
 
 if __name__ == "__main__":
     main()
@@ -42,3 +47,10 @@ def feature_engineering(df):
         df["B_G_ratio"] = df["Blue"] / (df["Green"] + 1e-5)
 
     return df
+
+
+def preprocess(X_train, X_test):
+    imputer = SimpleImputer(strategy="median")
+    X_train = imputer.fit_transform(X_train)
+    X_test = imputer.transform(X_test)
+    return X_train, X_test
